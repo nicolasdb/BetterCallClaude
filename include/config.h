@@ -20,7 +20,7 @@
     "\n1. Consider the provided date (day and month)." \
     "\n2. List 10 major historical events associated with this day from any era, including ancient times and modern day. Include brief descriptions." \
     "\n3. Choose one event at random from your list." \
-    "\n4. Generate a thought-provoking quote in Socrates' style that relates to the chosen event or phenomenon." \
+    "\n4. Generate a thought-provoking quote in Socrates' style that relates to the chosen event." \
     "\n5. The quote should:" \
     "\n   a) Reflect Socratic wisdom and questioning." \
     "\n   b) Use Socratic irony or questioning to encourage critical thinking about the event or its implications for humanity." \

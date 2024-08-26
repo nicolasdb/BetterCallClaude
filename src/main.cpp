@@ -28,17 +28,21 @@ CRGB leds[NUM_LEDS];
 
 // LED states
 enum LedState {
+    WAITING_FOR_WIFI,
     WAITING_FOR_INPUT,
     WAITING_FOR_API,
     IDLE
 };
 
 // Global variables
-LedState currentLedState = WAITING_FOR_INPUT;
+LedState currentLedState = WAITING_FOR_WIFI;
 TaskHandle_t ledTaskHandle = NULL;
+TaskHandle_t wifiTaskHandle = NULL;
+bool serialAvailable = false;
+bool wifiConnected = false;
 
 // Function prototypes
-void setupWiFi();
+void setupWiFi(void * parameter);
 String getCurrentTimeDate();
 String getQuoteFromClaude(const String& timeDate);
 void ledTask(void * parameter);
@@ -46,13 +50,17 @@ void debugPrint(const String& message, bool always = false);
 
 void setup() {
     Serial.begin(115200);
-    while (!Serial) delay(100);
+    
+    // Wait for serial connection or timeout after 3 seconds
+    unsigned long startTime = millis();
+    while (!Serial && millis() - startTime < 3000) {
+        delay(100);
+    }
+    serialAvailable = Serial;
     
     pinMode(PIN_BUTTON, INPUT_PULLUP);
     FastLED.addLeds<LED_TYPE, PIN_LED, GRB>(leds, NUM_LEDS);
     FastLED.setBrightness(LED_BRIGHTNESS);
-    
-    setupWiFi();
     
     // Create the LED task
     xTaskCreatePinnedToCore(
@@ -65,14 +73,25 @@ void setup() {
         0
     );
     
-    debugPrint("Setup complete. Please don't push the red button...", true);
+    // Create the WiFi connection task
+    xTaskCreatePinnedToCore(
+        setupWiFi,
+        "WiFiTask",
+        4096,
+        NULL,
+        1,
+        &wifiTaskHandle,
+        1
+    );
+    
+    debugPrint("Setup complete. Connecting to WiFi...", true);
 }
 
 void loop() {
     static unsigned long lastDebounceTime = 0;
     static const unsigned long debounceDelay = 50;
 
-    if (digitalRead(PIN_BUTTON) == LOW) {
+    if (wifiConnected && digitalRead(PIN_BUTTON) == LOW) {
         if ((millis() - lastDebounceTime) > debounceDelay) {
             debugPrint("Button pressed. I should better call Claude...", true);
             
@@ -98,7 +117,7 @@ void loop() {
 }
 
 // Sets up WiFi connection with retry mechanism
-void setupWiFi() {
+void setupWiFi(void * parameter) {
     WiFi.begin(ssid, password);
     int attempts = 0;
     while (WiFi.status() != WL_CONNECTED && attempts < 20) {
@@ -111,6 +130,9 @@ void setupWiFi() {
         ESP.restart();
     }
     debugPrint("\nConnected to WiFi", true);
+    wifiConnected = true;
+    currentLedState = WAITING_FOR_INPUT;
+    vTaskDelete(NULL);
 }
 
 // Fetches current date and time from a web API
@@ -232,6 +254,12 @@ void ledTask(void * parameter) {
 
     for(;;) {
         switch (currentLedState) {
+            case WAITING_FOR_WIFI:
+                // Blue pulsing effect for WiFi connection
+                leds[0] = CHSV(160, 255, abs(sin(millis() / 500.0) * 255));
+                FastLED.show();
+                break;
+
             case WAITING_FOR_INPUT:
                 if (millis() - lastToggle >= blinkInterval) {
                     ledOn = !ledOn;
@@ -257,9 +285,9 @@ void ledTask(void * parameter) {
     }
 }
 
-// Prints debug messages to Serial if DEBUG_MODE is enabled
+// Prints debug messages to Serial if DEBUG_MODE is enabled and Serial is available
 void debugPrint(const String& message, bool always) {
-    if (DEBUG_MODE || always) {
+    if ((DEBUG_MODE || always) && serialAvailable) {
         Serial.println(message);
     }
 }
