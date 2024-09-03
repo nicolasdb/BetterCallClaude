@@ -15,5 +15,6 @@ void setupLED();
 void updateLED(LedState state);
 void setupThermalPrinter();
 void printQuote(const String& quote);
+String getSelectorStateString();
 
 #endif // OUTPUT_H

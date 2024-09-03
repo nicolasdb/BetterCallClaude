@@ -1,5 +1,6 @@
 #include "output.h"
 #include "config.h"
+#include "input.h"
 #include <FastLED.h>
 #include <Adafruit_Thermal.h>
 
@@ -9,6 +10,7 @@ Adafruit_Thermal printer(&THERMAL_PRINTER_SERIAL);
 void setupLED() {
     FastLED.addLeds<LED_TYPE, PIN_LED, GRB>(leds, NUM_LEDS);
     FastLED.setBrightness(LED_BRIGHTNESS);
+    Serial.println("LED setup completed");
 }
 
 void updateLED(LedState state) {
@@ -20,19 +22,23 @@ void updateLED(LedState state) {
     switch (state) {
         case WAITING_FOR_WIFI:
             leds[0] = CHSV(160, 255, abs(sin(millis() / 500.0) * 255));
+            Serial.println("LED: Waiting for WiFi");
             break;
         case WAITING_FOR_INPUT:
             if (millis() - lastToggle >= blinkInterval) {
                 ledOn = !ledOn;
                 leds[0] = ledOn ? CRGB::Red : CRGB::Black;
                 lastToggle = millis();
+                Serial.println("LED: Waiting for input (Blinking Red)");
             }
             break;
         case WAITING_FOR_API:
             leds[0] = CHSV(hue++, 255, 255);
+            Serial.println("LED: Waiting for API (Rainbow)");
             break;
         case IDLE:
             leds[0] = CRGB::Black;
+            Serial.println("LED: Idle (Off)");
             break;
     }
     FastLED.show();
@@ -42,23 +48,45 @@ void clearPrinterBuffer() {
     while (THERMAL_PRINTER_SERIAL.available() > 0) {
         THERMAL_PRINTER_SERIAL.read();
     }
+    Serial.println("Printer buffer cleared");
 }
 
 void setupThermalPrinter() {
-    THERMAL_PRINTER_SERIAL.begin(9600, SERIAL_8N1, THERMAL_PRINTER_RX, THERMAL_PRINTER_TX);
-    delay(1000);  // Wait for the printer to initialize
-    clearPrinterBuffer();
-    printer.begin();
-    printer.setDefault();  // Restore printer to defaults
-    printer.wake();        // Wake up the printer
-    printer.setFont('A');  // Set font to normal
+    Serial.println("Setting up thermal printer...");
     
-    // Send reset command
+    // Initialize UART communication
+    THERMAL_PRINTER_SERIAL.begin(THERMAL_PRINTER_BAUD_RATE, SERIAL_8N1, THERMAL_PRINTER_RX, THERMAL_PRINTER_TX);
+    Serial.println("Thermal printer serial initialized");
+    
+    // Add a delay before sending data
+    delay(3000);
+    Serial.println("Delay complete");
+    
+    // Flush the UART buffer
+    clearPrinterBuffer();
+    
+    Serial.println("Calling printer.begin()...");
+    printer.begin();
+    Serial.println("Printer begin() called");
+    
+    Serial.println("Setting printer defaults...");
+    printer.setDefault();
+    
+    Serial.println("Waking up printer...");
+    printer.wake();
+    
+    Serial.println("Setting printer font...");
+    printer.setFont('A');
+    
+    Serial.println("Sending reset command to printer...");
     printer.write(27);
     printer.write(64);
     delay(50);  // Wait for the printer to process the reset command
     
+    Serial.println("Final clear of printer buffer...");
     clearPrinterBuffer();
+    
+    Serial.println("Thermal printer setup completed");
 }
 
 String wordWrap(const String& text, int lineWidth) {
@@ -92,9 +120,24 @@ String wordWrap(const String& text, int lineWidth) {
     return result;
 }
 
+String getSelectorStateString() {
+    int selectorState = getSystemPromptSelector();
+    return "Selector State: " + String(selectorState);
+}
+
 void printQuote(const String& quote) {
+    Serial.println("Printing quote...");
     clearPrinterBuffer();
+    
+    #if DEBUG_MODE
+    String debugInfo = getSelectorStateString();
+    printer.println(debugInfo);
+    printer.println("--------------------");
+    Serial.println("Debug info printed: " + debugInfo);
+    #endif
+    
     String formattedQuote = wordWrap(quote, THERMAL_PRINTER_MAX_CHAR_PER_LINE);
     printer.println(formattedQuote);
     printer.feed(2);
+    Serial.println("Quote printed successfully");
 }

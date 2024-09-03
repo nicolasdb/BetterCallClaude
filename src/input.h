@@ -6,6 +6,7 @@
 
 void setupButton();
 bool isButtonPressed();
+void debugButtonState();
 int getSystemPromptSelector();
 
 #endif // INPUT_H

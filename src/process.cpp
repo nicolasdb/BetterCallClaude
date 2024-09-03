@@ -5,8 +5,10 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
+#include <time.h>
 
 extern bool wifiConnected;
+unsigned long bootTime = 0;
 
 void setupWiFi() {
     WiFi.begin(ssid, password);
@@ -22,36 +24,72 @@ void setupWiFi() {
     }
     Serial.println("\nConnected to WiFi");
     wifiConnected = true;
+    bootTime = millis();
+}
+
+String getLocalTime() {
+    unsigned long currentTime = millis();
+    unsigned long seconds = (currentTime - bootTime) / 1000;
+    unsigned long minutes = seconds / 60;
+    unsigned long hours = minutes / 60;
+    unsigned long days = hours / 24;
+
+    char timeString[20];
+    snprintf(timeString, sizeof(timeString), "%02lu:%02lu:%02lu", hours % 24, minutes % 60, seconds % 60);
+    return String(timeString);
 }
 
 String getCurrentTimeDate() {
-    if (WiFi.status() != WL_CONNECTED) {
-        Serial.println("WiFi not connected");
-        return "";
+    const int maxRetries = 3;
+    int retryCount = 0;
+
+    while (retryCount < maxRetries) {
+        if (WiFi.status() != WL_CONNECTED) {
+            Serial.println("WiFi not connected. Attempting to reconnect...");
+            WiFi.reconnect();
+            delay(5000);
+            if (WiFi.status() != WL_CONNECTED) {
+                Serial.println("WiFi reconnection failed");
+                retryCount++;
+                continue;
+            }
+        }
+
+        HTTPClient http;
+        http.begin("http://worldtimeapi.org/api/ip");
+        http.setTimeout(10000);
+        int httpResponseCode = http.GET();
+        
+        Serial.print("HTTP Response code: ");
+        Serial.println(httpResponseCode);
+
+        if (httpResponseCode > 0) {
+            String payload = http.getString();
+            Serial.println("Raw payload: " + payload);
+
+            StaticJsonDocument<1024> doc;
+            DeserializationError error = deserializeJson(doc, payload);
+            if (error) {
+                Serial.println("JSON parsing failed: " + String(error.c_str()));
+                http.end();
+                retryCount++;
+                continue;
+            }
+            String datetime = doc["datetime"].as<String>();
+            http.end();
+            return datetime;
+        } else {
+            Serial.println("Error code: " + String(httpResponseCode));
+            Serial.println("Error message: " + http.errorToString(httpResponseCode));
+            http.end();
+            retryCount++;
+            delay(1000);  // Wait a bit before retrying
+        }
     }
 
-    HTTPClient http;
-    http.begin("http://worldtimeapi.org/api/ip");
-    http.setTimeout(10000);
-    int httpResponseCode = http.GET();
-    
-    if (httpResponseCode > 0) {
-        String payload = http.getString();
-        StaticJsonDocument<1024> doc;
-        DeserializationError error = deserializeJson(doc, payload);
-        if (error) {
-            Serial.println("JSON parsing failed: " + String(error.c_str()));
-            http.end();
-            return "";
-        }
-        String datetime = doc["datetime"].as<String>();
-        http.end();
-        return datetime;
-    } else {
-        Serial.println("Error code: " + String(httpResponseCode));
-        http.end();
-        return "";
-    }
+    Serial.println("Failed to get current time and date after " + String(maxRetries) + " attempts");
+    Serial.println("Using local time as fallback");
+    return getLocalTime();
 }
 
 String getQuoteFromClaude(const String& timeDate) {
@@ -76,7 +114,31 @@ String getQuoteFromClaude(const String& timeDate) {
     
     // Use the system prompt selector to choose the appropriate prompt
     int promptSelector = getSystemPromptSelector();
-    doc["system"] = promptSelector == 0 ? SYSTEM_PROMPT_0 : SYSTEM_PROMPT_1;
+    String systemPrompt;
+    switch (promptSelector) {
+        case 1:
+            systemPrompt = SYSTEM_PROMPT_1;
+            break;
+        case 2:
+            systemPrompt = SYSTEM_PROMPT_2;
+            break;
+        case 3:
+            systemPrompt = SYSTEM_PROMPT_3;
+            break;
+        case 4:
+            systemPrompt = SYSTEM_PROMPT_4;
+            break;
+        case 5:
+            systemPrompt = SYSTEM_PROMPT_5;
+            break;
+        case 6:
+            systemPrompt = SYSTEM_PROMPT_6;
+            break;
+        default:
+            systemPrompt = SYSTEM_PROMPT_1;
+            break;
+    }
+    doc["system"] = systemPrompt;
     
     JsonArray messages = doc["messages"].to<JsonArray>();
     JsonObject messageObj = messages.createNestedObject();
