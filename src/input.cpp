@@ -3,6 +3,8 @@
 
 static unsigned long lastDebounceTime = 0;
 static const unsigned long debounceDelay = 50;
+static bool lastButtonState = HIGH;
+static bool buttonState = HIGH;
 
 void setupButton() {
     pinMode(PIN_BUTTON, INPUT_PULLUP);
@@ -19,14 +21,44 @@ void setupButton() {
 }
 
 bool isButtonPressed() {
-    bool reading = digitalRead(PIN_BUTTON) == LOW;
-    
-    if (reading && ((millis() - lastDebounceTime) > debounceDelay)) {
+    bool reading = digitalRead(PIN_BUTTON);
+
+    if (reading != lastButtonState) {
         lastDebounceTime = millis();
-        Serial.println("Button pressed (PIN " + String(PIN_BUTTON) + ")");
-        return true;
     }
-    
+
+    if ((millis() - lastDebounceTime) > debounceDelay) {
+        if (reading != buttonState) {
+            buttonState = reading;
+            if (buttonState == LOW) {
+                Serial.println("Button pressed (PIN " + String(PIN_BUTTON) + ")");
+                return true;
+            }
+        }
+    }
+
+    lastButtonState = reading;
+    return false;
+}
+
+bool isButtonReleased() {
+    bool reading = digitalRead(PIN_BUTTON);
+
+    if (reading != lastButtonState) {
+        lastDebounceTime = millis();
+    }
+
+    if ((millis() - lastDebounceTime) > debounceDelay) {
+        if (reading != buttonState) {
+            buttonState = reading;
+            if (buttonState == HIGH) {
+                Serial.println("Button released (PIN " + String(PIN_BUTTON) + ")");
+                return true;
+            }
+        }
+    }
+
+    lastButtonState = reading;
     return false;
 }
 

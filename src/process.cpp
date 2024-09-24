@@ -5,10 +5,9 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
-#include <time.h>
 
 extern bool wifiConnected;
-unsigned long bootTime = 0;
+extern SemaphoreHandle_t wifiSemaphore;
 
 void setupWiFi() {
     WiFi.begin(ssid, password);
@@ -24,77 +23,18 @@ void setupWiFi() {
     }
     Serial.println("\nConnected to WiFi");
     wifiConnected = true;
-    bootTime = millis();
+    xSemaphoreGive(wifiSemaphore);
 }
 
-String getLocalTime() {
-    unsigned long currentTime = millis();
-    unsigned long seconds = (currentTime - bootTime) / 1000;
-    unsigned long minutes = seconds / 60;
-    unsigned long hours = minutes / 60;
-    unsigned long days = hours / 24;
-
-    char timeString[20];
-    snprintf(timeString, sizeof(timeString), "%02lu:%02lu:%02lu", hours % 24, minutes % 60, seconds % 60);
-    return String(timeString);
-}
-
-String getCurrentTimeDate() {
-    const int maxRetries = 3;
-    int retryCount = 0;
-
-    while (retryCount < maxRetries) {
-        if (WiFi.status() != WL_CONNECTED) {
-            Serial.println("WiFi not connected. Attempting to reconnect...");
-            WiFi.reconnect();
-            delay(5000);
-            if (WiFi.status() != WL_CONNECTED) {
-                Serial.println("WiFi reconnection failed");
-                retryCount++;
-                continue;
-            }
-        }
-
-        HTTPClient http;
-        http.begin("http://worldtimeapi.org/api/ip");
-        http.setTimeout(10000);
-        int httpResponseCode = http.GET();
-        
-        Serial.print("HTTP Response code: ");
-        Serial.println(httpResponseCode);
-
-        if (httpResponseCode > 0) {
-            String payload = http.getString();
-            Serial.println("Raw payload: " + payload);
-
-            StaticJsonDocument<1024> doc;
-            DeserializationError error = deserializeJson(doc, payload);
-            if (error) {
-                Serial.println("JSON parsing failed: " + String(error.c_str()));
-                http.end();
-                retryCount++;
-                continue;
-            }
-            String datetime = doc["datetime"].as<String>();
-            http.end();
-            return datetime;
-        } else {
-            Serial.println("Error code: " + String(httpResponseCode));
-            Serial.println("Error message: " + http.errorToString(httpResponseCode));
-            http.end();
-            retryCount++;
-            delay(1000);  // Wait a bit before retrying
-        }
+String getQuoteFromClaude(int promptSelector) {
+    if (xSemaphoreTake(wifiSemaphore, pdMS_TO_TICKS(5000)) != pdTRUE) {
+        Serial.println("Failed to acquire WiFi semaphore");
+        return "Error: WiFi not available";
     }
 
-    Serial.println("Failed to get current time and date after " + String(maxRetries) + " attempts");
-    Serial.println("Using local time as fallback");
-    return getLocalTime();
-}
-
-String getQuoteFromClaude(const String& timeDate) {
     if (WiFi.status() != WL_CONNECTED) {
         Serial.println("WiFi not connected");
+        xSemaphoreGive(wifiSemaphore);
         return "Error: WiFi not connected";
     }
 
@@ -104,16 +44,11 @@ String getQuoteFromClaude(const String& timeDate) {
     http.addHeader("x-api-key", apiKey);
     http.addHeader("anthropic-version", "2023-06-01");
 
-    char message[256];
-    snprintf(message, sizeof(message), MESSAGE_TEMPLATE, timeDate.c_str());
-
-    DynamicJsonDocument doc(1024);
+    DynamicJsonDocument doc(4096);
     doc["model"] = CLAUDE_MODEL;
     doc["max_tokens"] = CLAUDE_MAX_TOKENS;
     doc["temperature"] = CLAUDE_TEMPERATURE;
     
-    // Use the system prompt selector to choose the appropriate prompt
-    int promptSelector = getSystemPromptSelector();
     String systemPrompt;
     switch (promptSelector) {
         case 1:
@@ -138,15 +73,19 @@ String getQuoteFromClaude(const String& timeDate) {
             systemPrompt = SYSTEM_PROMPT_1;
             break;
     }
+    
     doc["system"] = systemPrompt;
     
     JsonArray messages = doc["messages"].to<JsonArray>();
     JsonObject messageObj = messages.createNestedObject();
-    messageObj["role"] = CLAUDE_ROLE;
-    messageObj["content"] = message;
+    messageObj["role"] = "user";
+    messageObj["content"] = MESSAGE_TEMPLATE;
 
     String payload;
     serializeJson(doc, payload);
+    
+    Serial.println("Sending payload to API:");
+    Serial.println(payload);
 
     http.setTimeout(30000);
     int httpResponseCode = http.POST(payload);
@@ -154,7 +93,10 @@ String getQuoteFromClaude(const String& timeDate) {
 
     if (httpResponseCode > 0) {
         String rawResponse = http.getString();
-        DynamicJsonDocument responseDoc(2048);
+        Serial.println("Raw API response:");
+        Serial.println(rawResponse);
+        
+        DynamicJsonDocument responseDoc(4096);
         DeserializationError error = deserializeJson(responseDoc, rawResponse);
 
         if (error) {
@@ -170,9 +112,11 @@ String getQuoteFromClaude(const String& timeDate) {
         }
     } else {
         Serial.println("HTTP Error code: " + String(httpResponseCode));
+        Serial.println("Error response: " + http.getString());
         response = "Error: Unable to get quote";
     }
 
     http.end();
+    xSemaphoreGive(wifiSemaphore);
     return response;
 }

@@ -1,19 +1,88 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <EEPROM.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <freertos/queue.h>
+#include <freertos/semphr.h>
 #include "config.h"
 #include "input.h"
 #include "process.h"
 #include "output.h"
-#include "spiffs_utils.h"
 
-#define FIRMWARE_VERSION "1.0.1"
+#define FIRMWARE_VERSION "1.2.2"
 #define PRINTER_ID_ADDRESS 0
 #define PRINTER_ID_LENGTH 16
 
+// FreeRTOS task handles
+TaskHandle_t wifiTaskHandle;
+TaskHandle_t ledTaskHandle;
+TaskHandle_t buttonTaskHandle;
+TaskHandle_t apiTaskHandle;
+TaskHandle_t printerTaskHandle;
+
+// FreeRTOS queues and semaphores
+QueueHandle_t apiRequestQueue;
+QueueHandle_t printQueue;
+SemaphoreHandle_t wifiSemaphore;
+
+// Global variables
 bool wifiConnected = false;
 LedState currentLedState = WAITING_FOR_WIFI;
 char printerId[PRINTER_ID_LENGTH + 1];  // +1 for null terminator
+
+// Function prototypes
+void generatePrinterId();
+void loadOrGeneratePrinterId();
+void wifiTask(void *pvParameters);
+void ledTask(void *pvParameters);
+void buttonTask(void *pvParameters);
+void apiTask(void *pvParameters);
+void printerTask(void *pvParameters);
+
+// External function declarations
+extern void setupButton();
+extern void setupLED();
+extern void setupThermalPrinter();
+extern void setupWiFi();
+extern bool isButtonPressed();
+extern bool isButtonReleased();
+extern int getSystemPromptSelector();
+extern void updateLED(LedState state);
+extern String getQuoteFromClaude(int promptSelector);
+extern void printQuote(const String& quote);
+
+void setup() {
+    Serial.begin(115200);
+    Serial.println("Starting setup...");
+    Serial.print("Firmware version: ");
+    Serial.println(FIRMWARE_VERSION);
+    
+    loadOrGeneratePrinterId();
+    
+    setupButton();
+    setupLED();
+    setupThermalPrinter();
+    
+    // Create FreeRTOS objects
+    apiRequestQueue = xQueueCreate(5, sizeof(int));
+    printQueue = xQueueCreate(5, sizeof(String));
+    wifiSemaphore = xSemaphoreCreateBinary();
+    
+    // Create FreeRTOS tasks
+    xTaskCreatePinnedToCore(wifiTask, "WiFiTask", 4096, NULL, 1, &wifiTaskHandle, 0);
+    xTaskCreatePinnedToCore(ledTask, "LEDTask", 2048, NULL, 2, &ledTaskHandle, 1);
+    xTaskCreatePinnedToCore(buttonTask, "ButtonTask", 4096, NULL, 2, &buttonTaskHandle, 1);
+    xTaskCreatePinnedToCore(apiTask, "APITask", 8192, NULL, 1, &apiTaskHandle, 0);
+    xTaskCreatePinnedToCore(printerTask, "PrinterTask", 4096, NULL, 1, &printerTaskHandle, 1);
+    
+    Serial.println("Setup completed. FreeRTOS scheduler starting...");
+}
+
+void loop() {
+    // Empty. Tasks are handled by FreeRTOS
+    vTaskDelete(NULL);
+}
 
 void generatePrinterId() {
     randomSeed(analogRead(0));
@@ -53,110 +122,76 @@ void loadOrGeneratePrinterId() {
     Serial.println(printerId);
 }
 
-void setup() {
-    Serial.begin(115200);
-    Serial.println("Starting setup...");
-    Serial.print("Firmware version: ");
-    Serial.println(FIRMWARE_VERSION);
-    
-    loadOrGeneratePrinterId();
-    
-    if (!initSPIFFS()) {
-        Serial.println("Failed to initialize SPIFFS. Some features may not work.");
-    }
-    
-    setupThermalPrinter();
-    delay(3000);
-    
-    setupButton();
-    setupLED();
-    
+void wifiTask(void *pvParameters) {
     setupWiFi();
-    
-    currentLedState = WAITING_FOR_INPUT;
-    
-    Serial.println("Setup completed. Entering main loop.");
-}
-
-bool isWiFiConnected() {
-    return (WiFi.status() == WL_CONNECTED);
-}
-
-void loop() {
-    static unsigned long lastDebugTime = 0;
-    static unsigned long loopCounter = 0;
-
-    updateLED(currentLedState);
-    loopCounter++;
-
-    if (!wifiConnected) {
-        wifiConnected = isWiFiConnected();
-        if (wifiConnected) {
-            Serial.println("WiFi connected");
+    for (;;) {
+        if (WiFi.status() != WL_CONNECTED) {
+            Serial.println("WiFi disconnected. Attempting to reconnect...");
+            WiFi.reconnect();
+            vTaskDelay(pdMS_TO_TICKS(5000));
+        } else if (!wifiConnected) {
+            wifiConnected = true;
+            xSemaphoreGive(wifiSemaphore);
+            currentLedState = WAITING_FOR_INPUT;
         }
+        vTaskDelay(pdMS_TO_TICKS(10000));  // Check WiFi status every 10 seconds
     }
+}
 
-    // Debug message for button state
-    if (digitalRead(PIN_BUTTON) == LOW) {
-        Serial.println("Button on pin 10 is pressed");
-    }
-
-    if (wifiConnected && isButtonPressed()) {
-        Serial.println("Button press detected in main loop. Calling Claude...");
-        
-        currentLedState = WAITING_FOR_API;
+void ledTask(void *pvParameters) {
+    for (;;) {
         updateLED(currentLedState);
-        
-        String timeDate = getCurrentTimeDate();
-        if (timeDate != "") {
-            String quote = getQuoteFromClaude(timeDate);
+        vTaskDelay(pdMS_TO_TICKS(50));  // Update LED every 50ms
+    }
+}
+
+void buttonTask(void *pvParameters) {
+    for (;;) {
+        if (isButtonPressed() && wifiConnected) {
+            Serial.println("Button press detected. Waiting for release...");
+            currentLedState = WAITING_FOR_API;
             
+            while (!isButtonReleased()) {
+                vTaskDelay(pdMS_TO_TICKS(10));
+            }
+            
+            Serial.println("Button released. Requesting quote...");
+            int promptSelector = getSystemPromptSelector();
+            BaseType_t xStatus = xQueueSendToBack(apiRequestQueue, &promptSelector, 0);
+            if (xStatus != pdPASS) {
+                Serial.println("Failed to send prompt selector to API queue. Queue might be full.");
+                currentLedState = WAITING_FOR_INPUT;
+            }
+        }
+        vTaskDelay(pdMS_TO_TICKS(10));  // Check button every 10ms
+    }
+}
+
+void apiTask(void *pvParameters) {
+    int promptSelector;
+    for (;;) {
+        if (xQueueReceive(apiRequestQueue, &promptSelector, portMAX_DELAY) == pdTRUE) {
+            String quote = getQuoteFromClaude(promptSelector);
             if (quote != "") {
                 currentLedState = IDLE;
-                updateLED(currentLedState);
-                
-                Serial.println("The Quote is:");
-                Serial.println(quote);
-                
-                if (saveQuoteToSPIFFS(quote)) {
-                    Serial.println("Quote saved to SPIFFS");
-                } else {
-                    Serial.println("Failed to save quote to SPIFFS");
+                Serial.println("Quote received. Sending to print queue.");
+                BaseType_t xStatus = xQueueSendToBack(printQueue, &quote, 0);
+                if (xStatus != pdPASS) {
+                    Serial.println("Failed to send quote to print queue. Queue might be full.");
                 }
-                
-                printQuote(quote);
             } else {
-                Serial.println("Failed to get quote from Claude. Trying to load last saved quote.");
-                String lastQuote = loadQuoteFromSPIFFS();
-                if (lastQuote != "") {
-                    Serial.println("Printing last saved quote:");
-                    Serial.println(lastQuote);
-                    printQuote(lastQuote);
-                } else {
-                    Serial.println("No saved quote available.");
-                }
+                Serial.println("Failed to get quote from Claude.");
             }
-        } else {
-            Serial.println("Failed to get current time and date.");
+            currentLedState = WAITING_FOR_INPUT;
         }
-        
-        currentLedState = WAITING_FOR_INPUT;
     }
+}
 
-    // Add periodic debug output
-    if (millis() - lastDebugTime > 5000) {  // Print debug info every 5 seconds
-        Serial.println("-------- Debug Info --------");
-        Serial.println("Firmware version: " + String(FIRMWARE_VERSION));
-        Serial.println("Printer ID: " + String(printerId));
-        Serial.println("Loop counter: " + String(loopCounter));
-        Serial.println("WiFi connected: " + String(wifiConnected ? "Yes" : "No"));
-        Serial.println("Current LED state: " + String(currentLedState));
-        Serial.println(getSelectorStateString());
-        Serial.println("Button state: " + String(digitalRead(PIN_BUTTON) == LOW ? "Pressed" : "Released"));
-        Serial.println("-----------------------------");
-        lastDebugTime = millis();
-        loopCounter = 0;
+void printerTask(void *pvParameters) {
+    String quoteToPrint;
+    for (;;) {
+        if (xQueueReceive(printQueue, &quoteToPrint, portMAX_DELAY) == pdTRUE) {
+            printQuote(quoteToPrint);
+        }
     }
-    
-    delay(10);
 }

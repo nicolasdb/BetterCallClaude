@@ -5,7 +5,6 @@
 #include "config.h"
 
 void setupWiFi();
-String getCurrentTimeDate();
-String getQuoteFromClaude(const String& timeDate);
+String getQuoteFromClaude(int promptSelector);
 
 #endif // PROCESS_H

@@ -7,6 +7,8 @@
 CRGB leds[NUM_LEDS];
 Adafruit_Thermal printer(&THERMAL_PRINTER_SERIAL);
 
+static bool isPrinterBusy = false;
+
 void setupLED() {
     FastLED.addLeds<LED_TYPE, PIN_LED, GRB>(leds, NUM_LEDS);
     FastLED.setBrightness(LED_BRIGHTNESS);
@@ -22,23 +24,19 @@ void updateLED(LedState state) {
     switch (state) {
         case WAITING_FOR_WIFI:
             leds[0] = CHSV(160, 255, abs(sin(millis() / 500.0) * 255));
-            Serial.println("LED: Waiting for WiFi");
             break;
         case WAITING_FOR_INPUT:
             if (millis() - lastToggle >= blinkInterval) {
                 ledOn = !ledOn;
-                leds[0] = ledOn ? CRGB::Red : CRGB::Black;
+                leds[0] = ledOn ? CRGB::Green : CRGB::Black;
                 lastToggle = millis();
-                Serial.println("LED: Waiting for input (Blinking Red)");
             }
             break;
         case WAITING_FOR_API:
             leds[0] = CHSV(hue++, 255, 255);
-            Serial.println("LED: Waiting for API (Rainbow)");
             break;
         case IDLE:
             leds[0] = CRGB::Black;
-            Serial.println("LED: Idle (Off)");
             break;
     }
     FastLED.show();
@@ -126,6 +124,12 @@ String getSelectorStateString() {
 }
 
 void printQuote(const String& quote) {
+    if (isPrinterBusy) {
+        Serial.println("Printer is busy. Cannot print quote.");
+        return;
+    }
+
+    isPrinterBusy = true;
     Serial.println("Printing quote...");
     clearPrinterBuffer();
     
@@ -140,4 +144,6 @@ void printQuote(const String& quote) {
     printer.println(formattedQuote);
     printer.feed(2);
     Serial.println("Quote printed successfully");
+
+    isPrinterBusy = false;
 }
