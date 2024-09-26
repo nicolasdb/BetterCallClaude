@@ -5,6 +5,6 @@
 #include "config.h"
 
 void setupWiFi();
-String getQuoteFromClaude(int promptSelector);
+String getQuoteFromClaude(int promptSelector, float temperature, int maxTokens, int randomSeed);
 
 #endif // PROCESS_H

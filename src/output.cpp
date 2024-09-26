@@ -43,24 +43,33 @@ void updateLED(LedState state) {
 }
 
 void clearPrinterBuffer() {
+    int bytesCleared = 0;
     while (THERMAL_PRINTER_SERIAL.available() > 0) {
         THERMAL_PRINTER_SERIAL.read();
+        bytesCleared++;
     }
-    Serial.println("Printer buffer cleared");
+    Serial.printf("Printer buffer cleared. Bytes removed: %d\n", bytesCleared);
 }
 
 void setupThermalPrinter() {
     Serial.println("Setting up thermal printer...");
     
-    // Initialize UART communication
-    THERMAL_PRINTER_SERIAL.begin(THERMAL_PRINTER_BAUD_RATE, SERIAL_8N1, THERMAL_PRINTER_RX, THERMAL_PRINTER_TX);
-    Serial.println("Thermal printer serial initialized");
+    Serial.printf("Initializing UART communication (RX: %d, TX: %d, Baud: %d)...\n", 
+                  THERMAL_PRINTER_RX, THERMAL_PRINTER_TX, THERMAL_PRINTER_BAUD_RATE);
     
-    // Add a delay before sending data
+    // Explicitly initialize Serial1
+    Serial1.begin(THERMAL_PRINTER_BAUD_RATE, SERIAL_8N1, THERMAL_PRINTER_RX, THERMAL_PRINTER_TX);
+    
+    if (!Serial1) {
+        Serial.println("Failed to initialize Serial1 for thermal printer!");
+        return;
+    }
+    
+    Serial.println("Serial1 initialized for thermal printer");
+    
     delay(3000);
-    Serial.println("Delay complete");
+    Serial.println("3-second delay complete");
     
-    // Flush the UART buffer
     clearPrinterBuffer();
     
     Serial.println("Calling printer.begin()...");
@@ -72,19 +81,29 @@ void setupThermalPrinter() {
     
     Serial.println("Waking up printer...");
     printer.wake();
-    
-    Serial.println("Setting printer font...");
     printer.setFont('A');
     
     Serial.println("Sending reset command to printer...");
     printer.write(27);
     printer.write(64);
-    delay(50);  // Wait for the printer to process the reset command
+    delay(50);
     
-    Serial.println("Final clear of printer buffer...");
     clearPrinterBuffer();
     
     Serial.println("Thermal printer setup completed");
+    
+    // Test print
+    // testPrinterCommunication();
+}
+
+void testPrinterCommunication() {
+    Serial.println("Testing printer communication...");
+    printer.println("Printer Test");
+    printer.println("------------");
+    printer.println("If you can read this,");
+    printer.println("the printer is working.");
+    printer.feed(2);
+    Serial.println("Test print command sent. Check if the test message was printed.");
 }
 
 String wordWrap(const String& text, int lineWidth) {
@@ -130,20 +149,24 @@ void printQuote(const String& quote) {
     }
 
     isPrinterBusy = true;
-    Serial.println("Printing quote...");
+    Serial.println("Attempting to print quote...");
     clearPrinterBuffer();
     
     #if DEBUG_MODE
     String debugInfo = getSelectorStateString();
     printer.println(debugInfo);
+    Serial.println("Debug info sent to printer: " + debugInfo);
     printer.println("--------------------");
-    Serial.println("Debug info printed: " + debugInfo);
+    Serial.println("Separator sent to printer");
     #endif
     
     String formattedQuote = wordWrap(quote, THERMAL_PRINTER_MAX_CHAR_PER_LINE);
     printer.println(formattedQuote);
+    Serial.println("Quote sent to printer: " + formattedQuote);
+    
     printer.feed(2);
-    Serial.println("Quote printed successfully");
+    Serial.println("Paper feed command sent");
 
     isPrinterBusy = false;
+    Serial.println("Print operation completed");
 }

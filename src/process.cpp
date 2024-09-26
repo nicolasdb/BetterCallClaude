@@ -26,7 +26,7 @@ void setupWiFi() {
     xSemaphoreGive(wifiSemaphore);
 }
 
-String getQuoteFromClaude(int promptSelector) {
+String getQuoteFromClaude(int promptSelector, float temperature, int maxTokens, int randomSeed) {
     if (xSemaphoreTake(wifiSemaphore, pdMS_TO_TICKS(5000)) != pdTRUE) {
         Serial.println("Failed to acquire WiFi semaphore");
         return "Error: WiFi not available";
@@ -46,8 +46,8 @@ String getQuoteFromClaude(int promptSelector) {
 
     DynamicJsonDocument doc(4096);
     doc["model"] = CLAUDE_MODEL;
-    doc["max_tokens"] = CLAUDE_MAX_TOKENS;
-    doc["temperature"] = CLAUDE_TEMPERATURE;
+    doc["max_tokens"] = maxTokens;
+    doc["temperature"] = temperature;
     
     String systemPrompt;
     switch (promptSelector) {
@@ -60,15 +60,6 @@ String getQuoteFromClaude(int promptSelector) {
         case 3:
             systemPrompt = SYSTEM_PROMPT_3;
             break;
-        case 4:
-            systemPrompt = SYSTEM_PROMPT_4;
-            break;
-        case 5:
-            systemPrompt = SYSTEM_PROMPT_5;
-            break;
-        case 6:
-            systemPrompt = SYSTEM_PROMPT_6;
-            break;
         default:
             systemPrompt = SYSTEM_PROMPT_1;
             break;
@@ -79,7 +70,9 @@ String getQuoteFromClaude(int promptSelector) {
     JsonArray messages = doc["messages"].to<JsonArray>();
     JsonObject messageObj = messages.createNestedObject();
     messageObj["role"] = "user";
-    messageObj["content"] = MESSAGE_TEMPLATE;
+    char messageContent[128];
+    snprintf(messageContent, sizeof(messageContent), MESSAGE_TEMPLATE, randomSeed);
+    messageObj["content"] = messageContent;
 
     String payload;
     serializeJson(doc, payload);

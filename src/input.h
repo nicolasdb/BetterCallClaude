@@ -6,7 +6,10 @@
 
 void setupButton();
 bool isButtonPressed();
+bool isButtonReleased();
 void debugButtonState();
 int getSystemPromptSelector();
+float getClaudeTemperature();
+int getClaudeMaxTokens();
 
 #endif // INPUT_H

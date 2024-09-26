@@ -7,6 +7,7 @@
 void setupLED();
 void updateLED(LedState state);
 void setupThermalPrinter();
+void testPrinterCommunication();
 void printQuote(const String& quote);
 
 #endif // OUTPUT_H

@@ -6,18 +6,24 @@ static const unsigned long debounceDelay = 50;
 static bool lastButtonState = HIGH;
 static bool buttonState = HIGH;
 
-void setupButton() {
+void setupInput() {
     pinMode(PIN_BUTTON, INPUT_PULLUP);
     
-    // Setup prompt selector pins
+    // Setup prompt selector pins (now only 3 pins)
     pinMode(PIN_PROMPT_SELECTOR_0, INPUT_PULLUP);
     pinMode(PIN_PROMPT_SELECTOR_1, INPUT_PULLUP);
     pinMode(PIN_PROMPT_SELECTOR_2, INPUT_PULLUP);
-    pinMode(PIN_PROMPT_SELECTOR_3, INPUT_PULLUP);
-    pinMode(PIN_PROMPT_SELECTOR_4, INPUT_PULLUP);
-    pinMode(PIN_PROMPT_SELECTOR_5, INPUT_PULLUP);
     
-    Serial.println("Button (PIN " + String(PIN_BUTTON) + ") and selector pins initialized");
+    // Setup analog inputs for potentiometers
+    pinMode(PIN_POTENTIOMETER_1, INPUT);
+    pinMode(PIN_POTENTIOMETER_2, INPUT);
+    
+    // Initialize ADC
+    analogReadResolution(12);  // Set ADC resolution to 12 bits (0-4095)
+    
+    if (DEBUG_VERBOSE) {
+        Serial.println("Button, selector pins, and potentiometers initialized");
+    }
 }
 
 bool isButtonPressed() {
@@ -31,7 +37,6 @@ bool isButtonPressed() {
         if (reading != buttonState) {
             buttonState = reading;
             if (buttonState == LOW) {
-                Serial.println("Button pressed (PIN " + String(PIN_BUTTON) + ")");
                 return true;
             }
         }
@@ -52,7 +57,6 @@ bool isButtonReleased() {
         if (reading != buttonState) {
             buttonState = reading;
             if (buttonState == HIGH) {
-                Serial.println("Button released (PIN " + String(PIN_BUTTON) + ")");
                 return true;
             }
         }
@@ -66,9 +70,6 @@ int readPromptSelector() {
     if (digitalRead(PIN_PROMPT_SELECTOR_0) == LOW) return 1;
     if (digitalRead(PIN_PROMPT_SELECTOR_1) == LOW) return 2;
     if (digitalRead(PIN_PROMPT_SELECTOR_2) == LOW) return 3;
-    if (digitalRead(PIN_PROMPT_SELECTOR_3) == LOW) return 4;
-    if (digitalRead(PIN_PROMPT_SELECTOR_4) == LOW) return 5;
-    if (digitalRead(PIN_PROMPT_SELECTOR_5) == LOW) return 6;
     return 1; // Default to 1 if no selector is active
 }
 
@@ -76,4 +77,39 @@ int getSystemPromptSelector() {
     int selector = readPromptSelector();
     Serial.println("Current selector state: " + String(selector));
     return selector;
+}
+
+int readPotentiometer(int pin) {
+    int sum = 0;
+    for (int i = 0; i < 10; i++) {
+        sum += analogRead(pin);
+        delay(1);  // Small delay between readings
+    }
+    return sum / 10;  // Return average of 10 readings
+}
+
+float getClaudeTemperature() {
+    int rawValue = readPotentiometer(PIN_POTENTIOMETER_1);
+    return map(rawValue, 0, 4095, CLAUDE_TEMPERATURE_MIN * 100, CLAUDE_TEMPERATURE_MAX * 100) / 100.0;
+}
+
+int getClaudeMaxTokens() {
+    int rawValue = readPotentiometer(PIN_POTENTIOMETER_2);
+    return map(rawValue, 0, 4095, CLAUDE_MAX_TOKENS_MIN, CLAUDE_MAX_TOKENS_MAX);
+}
+
+void readAndPrintPotentiometers() {
+    int rawTemp = readPotentiometer(PIN_POTENTIOMETER_1);
+    int rawTokens = readPotentiometer(PIN_POTENTIOMETER_2);
+    float temperature = getClaudeTemperature();
+    int maxTokens = getClaudeMaxTokens();
+    
+    Serial.printf("Potentiometer 1 (PIN %d) - Raw: %d, Temperature: %.2f\n", 
+                  PIN_POTENTIOMETER_1, rawTemp, temperature);
+    Serial.printf("Potentiometer 2 (PIN %d) - Raw: %d, Max Tokens: %d\n", 
+                  PIN_POTENTIOMETER_2, rawTokens, maxTokens);
+}
+
+int getClaudeRandomSeed() {
+    return random(CLAUDE_SEED_MIN, CLAUDE_SEED_MAX + 1);
 }
