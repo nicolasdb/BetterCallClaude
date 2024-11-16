@@ -23,7 +23,7 @@ void setup() {
   display.begin();
 
   // Connect to WiFi network
-  wifi_manager_connect(WIFI_SSID, WIFI_PASSWORD);
+  wifi_manager_connect(ssid, password);
   wifiState = WIFI_CONNECTED;
 }
 
