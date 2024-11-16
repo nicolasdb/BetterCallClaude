@@ -38,8 +38,8 @@
 #define THERMAL_PRINTER_MAX_CHAR_PER_LINE 30
 
 // Claude API configuration
-// names : claude-3-5-sonnet-20240620 , claude-3-haiku-20240307
-#define CLAUDE_MODEL "claude-3-haiku-20240307"
+// names : claude-3-5-sonnet-20241022 , claude-3-5-haiku-20241022
+#define CLAUDE_MODEL "claude-3-5-haiku-20241022"
 #define CLAUDE_MAX_TOKENS 150
 #define CLAUDE_TEMPERATURE 1
 #define CLAUDE_ROLE "user"
@@ -57,8 +57,7 @@
 // System prompts
 // 1. Context Generator
 #define SYSTEM_PROMPT_1 \
-    "You are a quirky scenario generator for a creative thinking exercise. Your task is to generate a brief, unexpected scenario related to personal well-being in an educational or professional setting. The scenario should be no longer than 20 words, be somewhat absurd or unusual, and involve elements of personal wellness or work-life balance. Do not include any explanations or additional context - just provide the scenario itself."
-
+    "You are a creative scenario generator tasked with creating an engaging thinking exercise. Your goal is to produce a brief, unexpected scenario related to personal well-being in an educational or professional setting. The scenario should be somewhat absurd or unusual while still maintaining relevance to wellness or work-life balance.\n\nHere is the output type requested:\n\n<output_type>\n{{output_type}}\n</output_type>\n\nPlease follow these steps to generate your scenario:\n\nWrap your thought process in <idea_generation> tags:\n   a. List 10-12 random elements: 5-6 wellness-related items and 5-6 work/education-related items.\n   b. Select 2-3 elements that seem most incompatible or unrelated.\n   c. Generate at least 3 initial ideas combining these elements in unexpected ways.\n   d. For each idea, briefly describe how it might impact or resonate with working professionals or students.\n   e. Rate each idea's absurdity on a scale of 1-10, aiming for 6-8.\n   f. Choose the most promising idea and refine it into a concise scenario.\n   g. Count the words in your refined scenario to ensure it's within the 20-word limit.\n   h. Verify that your scenario meets all criteria: absurdity, wellness/work-life balance elements, educational/professional context.\n   i. If needed, make final adjustments to meet all criteria.\n\nPresent your final scenario in <scenario> tags. Include only the scenario itself, with no additional explanations or context.\n\nCriteria for the final scenario:\n- Maximum 20 words\n- Somewhat absurd or unusual\n- Involves elements of personal wellness or work-life balance\n- Set in an educational or professional context\n\nOutput structure :\n\n<idea_generation>\n[Your detailed thought process here]\n</idea_generation>\n\n<scenario>\nDuring a crucial board meeting, executives must pitch ideas while participating in a silent yoga session.\n</scenario>\n\nRemember, your final output should only include the <scenario> tags with the scenario itself, not the idea generation process."
 // 2. Pain Point Identifier
 #define SYSTEM_PROMPT_2 \
     "Generate a brief, unusual challenge related to managing or applying knowledge in a learning or work environment. Be creative and concise, describing the problem in no more than 20 words. Focus solely on the issue without offering solutions or additional context. Vary your sentence structure and avoid using introductory phrases."
@@ -67,7 +66,7 @@
 #define SYSTEM_PROMPT_3 \
     "You are an inspiring quote generator for an organizational development tool. Your task is to create a short, memorable quote that embodies one of the following principles: Collective Intelligence, Uniqueness, Learning, Technology Use, Integrity, Valuing Collaboration, Awareness, Transparency, or Enabling Experiences. The quote should be no longer than 15 words, be thought-provoking, and not explicitly mention the principle itself. Provide only the quote, without any additional explanation or context."
 
-#define MESSAGE_TEMPLATE "Generate a conversation starter."
+#define MESSAGE_TEMPLATE "generate a scenario"
 
 // LED configuration
 #define NUM_LEDS 1
