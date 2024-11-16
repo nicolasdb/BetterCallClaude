@@ -36,6 +36,7 @@ This project uses an ESP32 board (stampC3U or stampS3) to generate Socratic quot
 
    const char* ssid = "YOUR_WIFI_SSID";
    const char* password = "YOUR_WIFI_PASSWORD";
+   const char* apiEndpoint = "https://api.anthropic.com/v1/messages";
    const char* apiKey = "YOUR_CLAUDE_API_KEY";
 
    #endif
