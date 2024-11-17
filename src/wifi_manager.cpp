@@ -1,4 +1,5 @@
 #include "wifi_manager.h"
+#include "credentials.h"
 
 void wifi_manager_init() {
   // Initialize WiFi module
@@ -20,8 +21,21 @@ void wifi_manager_connect(const char* ssid, const char* password) {
   Serial.println(WiFi.localIP());
 }
 
+void wifi_manager_connect() {
+  // Connect using stored credentials
+  wifi_manager_connect(ssid, password);
+}
+
 void wifi_manager_disconnect() {
   // Disconnect from WiFi network
   WiFi.disconnect();
   Serial.println("Disconnected from WiFi");
+}
+
+const char* get_api_endpoint() {
+  return apiEndpoint;
+}
+
+const char* get_api_key() {
+  return apiKey;
 }
