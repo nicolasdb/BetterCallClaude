@@ -60,11 +60,17 @@ bool Printer::printQuote(const String& quote) {
 
     _updateStatus(PRINTING);
     
-    Serial.println("Sending data to printer:");
+    Serial.println("Original text:");
     Serial.println(quote);
     
-    // Send the data
-    THERMAL_PRINTER_SERIAL.println(quote);
+    // Wrap text to printer width
+    String wrappedText = _wrapText(quote, THERMAL_PRINTER_MAX_CHAR_PER_LINE);
+    
+    Serial.println("Wrapped text:");
+    Serial.println(wrappedText);
+    
+    // Send the wrapped text
+    THERMAL_PRINTER_SERIAL.println(wrappedText);
     delay(100);  // Wait for printing
     
     // Feed paper
@@ -80,18 +86,62 @@ bool Printer::printQuote(const String& quote) {
 
 String Printer::_wrapText(const String& text, int maxLineLength) {
     String wrappedText;
-    int lineLength = 0;
+    String currentLine;
+    String currentWord;
     
+    // Process each character
     for (unsigned int i = 0; i < text.length(); i++) {
-        if (lineLength >= maxLineLength) {
-            wrappedText += '\n';
-            lineLength = 0;
+        char c = text[i];
+        
+        if (c == ' ' || c == '\n') {
+            // If adding this word would exceed line length
+            if (currentLine.length() + currentWord.length() + 1 > maxLineLength) {
+                // Add current line to wrapped text and start new line
+                wrappedText += currentLine + '\n';
+                currentLine = currentWord + c;
+            } else {
+                // Add word to current line
+                if (currentLine.length() > 0) {
+                    currentLine += ' ';
+                }
+                currentLine += currentWord;
+                if (c == '\n') {
+                    wrappedText += currentLine + '\n';
+                    currentLine = "";
+                } else {
+                    currentLine += ' ';
+                }
+            }
+            currentWord = "";
+        } else {
+            currentWord += c;
+            
+            // If current word is already too long for a line
+            if (currentWord.length() >= maxLineLength) {
+                // If there's content in current line, add it first
+                if (currentLine.length() > 0) {
+                    wrappedText += currentLine + '\n';
+                    currentLine = "";
+                }
+                // Add the long word with a break
+                wrappedText += currentWord + '\n';
+                currentWord = "";
+            }
         }
-        wrappedText += text[i];
-        lineLength++;
-        if (text[i] == '\n') {
-            lineLength = 0;
+    }
+    
+    // Handle any remaining text
+    if (currentWord.length() > 0) {
+        if (currentLine.length() + currentWord.length() + 1 > maxLineLength) {
+            wrappedText += currentLine + '\n' + currentWord;
+        } else {
+            if (currentLine.length() > 0) {
+                currentLine += ' ';
+            }
+            wrappedText += currentLine + currentWord;
         }
+    } else if (currentLine.length() > 0) {
+        wrappedText += currentLine;
     }
     
     return wrappedText;
