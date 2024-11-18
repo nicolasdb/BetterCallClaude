@@ -1,6 +1,7 @@
 #include "APIClient.h"
 #include "wifi_manager.h"
 #include "SPIFFSManager.h"
+#include "json_parser.h"
 
 HTTPClient APIClient::http;
 unsigned long APIClient::requestDelay = 2000;  // Default 2s delay
@@ -15,19 +16,17 @@ String APIClient::selectSystemPrompt(int promptSelector) {
         case 1:
             return SYSTEM_PROMPT_1;
         case 2:
-            // TODO: Return SYSTEM_PROMPT_2 when defined
-            return "Create a quote that reflects deep wisdom about human nature, knowledge, or personal growth.";
+            return SYSTEM_PROMPT_2;
         default:
             return SYSTEM_PROMPT_1;
     }
 }
 
-String APIClient::formatMessageContent(int randomSeed) {
-    // Request only the final quote without the idea generation process
-    return "Generate a quote. Only include the final <quote> tags with the quote itself, not the idea generation process.";
+String APIClient::formatMessageContent() {
+    return "Generate quote. Only include the final <quote> tags with the quote itself.";
 }
 
-String APIClient::generateQuote(int promptSelector, float temperature, int maxTokens, int randomSeed) {
+String APIClient::generateQuote(int promptSelector, float temperature, int maxTokens) {
     if (WiFi.status() != WL_CONNECTED) {
         Serial.println("WiFi not connected");
         return "Error: WiFi not connected";
@@ -54,7 +53,7 @@ String APIClient::generateQuote(int promptSelector, float temperature, int maxTo
 
     DynamicJsonDocument doc(8192);  // Increased size for larger prompts
     doc["model"] = "claude-3-haiku-20240307"; 
-    doc["max_tokens"] = 1000;  // Increased to ensure we get complete response
+    doc["max_tokens"] = maxTokens;
     doc["temperature"] = temperature;
     
     doc["system"] = selectSystemPrompt(promptSelector);
@@ -62,7 +61,7 @@ String APIClient::generateQuote(int promptSelector, float temperature, int maxTo
     JsonArray messages = doc["messages"].to<JsonArray>();
     JsonObject messageObj = messages.createNestedObject();
     messageObj["role"] = "user";
-    messageObj["content"] = formatMessageContent(randomSeed);
+    messageObj["content"] = formatMessageContent();
 
     String payload;
     serializeJson(doc, payload);
@@ -90,46 +89,70 @@ String APIClient::generateQuote(int promptSelector, float temperature, int maxTo
             Serial.println(rawResponse);
         }
         
-        DynamicJsonDocument responseDoc(8192);  // Increased size for larger response
-        DeserializationError error = deserializeJson(responseDoc, rawResponse);
+        if (httpResponseCode == 200) {
+            DynamicJsonDocument responseDoc(8192);  // Increased size for larger response
+            DeserializationError error = deserializeJson(responseDoc, rawResponse);
 
-        if (error) {
-            Serial.println("deserializeJson() failed: " + String(error.c_str()));
-            response = "Error: JSON parsing failed";
-            http.end();  // Close connection on error
-        } else {
-            if (responseDoc["content"][0]["text"].is<String>()) {
-                response = responseDoc["content"][0]["text"].as<String>();
-                response.trim();
-            } else {
-                response = "Error: Unexpected JSON structure";
+            if (error) {
+                Serial.println("deserializeJson() failed: " + String(error.c_str()));
+                response = "Error: JSON parsing failed";
                 http.end();  // Close connection on error
+            } else {
+                if (responseDoc["content"][0]["text"].is<String>()) {
+                    String text = responseDoc["content"][0]["text"].as<String>();
+                    text.trim();
+
+                    // Check if response contains quote tags before returning
+                    String quote = JsonParser::extractQuote(text);
+                    if (quote.length() > 0) {
+                        response = text;
+                    } else {
+                        Serial.println("Response does not contain quote tags:");
+                        Serial.println(text);
+                        response = "Error: No quote found in response";
+                    }
+                } else {
+                    response = "Error: Unexpected JSON structure";
+                }
             }
+        } else {
+            Serial.printf("HTTP Error code: %d\n", httpResponseCode);
+            Serial.println("Error response: " + rawResponse);
+            response = "Error: API request failed with code " + String(httpResponseCode);
         }
     } else {
         Serial.println("HTTP Error code: " + String(httpResponseCode));
         Serial.println("Error response: " + http.getString());
         response = "Error: Unable to get quote";
-        http.end();  // Close connection on error
     }
 
-    lastRequestTime = millis();
+    if (!response.startsWith("Error:")) {
+        lastRequestTime = millis();
+    } else {
+        http.end();  // Close connection on error
+    }
     return response;
 }
 
 String APIClient::generateAndStoreQuote(int promptSelector, float temperature, 
-                                      int maxTokens, int randomSeed) {
-    String quote = generateQuote(promptSelector, temperature, maxTokens, randomSeed);
+                                      int maxTokens) {
+    String response = generateQuote(promptSelector, temperature, maxTokens);
     
-    if (!quote.startsWith("Error:")) {
-        if (SPIFFSManager::saveQuote(quote)) {
-            if (DEBUG_MODE) {
-                Serial.println("Quote successfully stored in SPIFFS");
+    // Only store if it's a valid quote (not an error)
+    if (!response.startsWith("Error:")) {
+        String quote = JsonParser::extractQuote(response);
+        if (quote.length() > 0) {
+            if (SPIFFSManager::saveQuote(response)) {
+                if (DEBUG_MODE) {
+                    Serial.println("Quote successfully stored in SPIFFS");
+                }
+            } else {
+                Serial.println("Failed to store quote in SPIFFS");
             }
         } else {
-            Serial.println("Failed to store quote in SPIFFS");
+            Serial.println("Not storing response - no valid quote found");
         }
     }
     
-    return quote;
+    return response;
 }

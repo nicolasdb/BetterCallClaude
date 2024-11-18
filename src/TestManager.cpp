@@ -69,7 +69,8 @@ void TestManager::runAPITest() {
         Serial.print("\nGenerating quote ");
         Serial.println(i + 1);
         
-        String quote = APIClient::generateAndStoreQuote(1, 0.7, 150, i);
+        // Using updated method signature without randomSeed
+        String quote = APIClient::generateAndStoreQuote(1);  // Using defaults for temperature and maxTokens
         if (quote.startsWith("Error:")) {
             handleAPIError(quote.c_str());
             return;
