@@ -13,22 +13,18 @@ bool APIClient::begin() {
 String APIClient::selectSystemPrompt(int promptSelector) {
     switch (promptSelector) {
         case 1:
-            return "You are a wise philosopher in the style of Socrates. Generate a profound, thought-provoking quote that challenges conventional thinking.";
+            return SYSTEM_PROMPT_1;
         case 2:
+            // TODO: Return SYSTEM_PROMPT_2 when defined
             return "Create a quote that reflects deep wisdom about human nature, knowledge, or personal growth.";
-        case 3:
-            return "Craft a quote that explores the relationship between individual experience and universal truth.";
         default:
-            return "You are a philosopher generating insightful quotes about life and wisdom.";
+            return SYSTEM_PROMPT_1;
     }
 }
 
 String APIClient::formatMessageContent(int randomSeed) {
-    char messageContent[256];
-    snprintf(messageContent, sizeof(messageContent), 
-             "Generate a philosophical quote that provides insight into human nature. Use the random seed %d to inspire unique creativity.", 
-             randomSeed);
-    return String(messageContent);
+    // Request only the final quote without the idea generation process
+    return "Generate a quote. Only include the final <quote> tags with the quote itself, not the idea generation process.";
 }
 
 String APIClient::generateQuote(int promptSelector, float temperature, int maxTokens, int randomSeed) {
@@ -56,9 +52,9 @@ String APIClient::generateQuote(int promptSelector, float temperature, int maxTo
         Serial.println("Reusing existing API connection...");
     }
 
-    DynamicJsonDocument doc(4096);
-    doc["model"] = "claude-3-5-haiku-20241022";
-    doc["max_tokens"] = maxTokens;
+    DynamicJsonDocument doc(8192);  // Increased size for larger prompts
+    doc["model"] = "claude-3-haiku-20240307"; 
+    doc["max_tokens"] = 1000;  // Increased to ensure we get complete response
     doc["temperature"] = temperature;
     
     doc["system"] = selectSystemPrompt(promptSelector);
@@ -94,7 +90,7 @@ String APIClient::generateQuote(int promptSelector, float temperature, int maxTo
             Serial.println(rawResponse);
         }
         
-        DynamicJsonDocument responseDoc(4096);
+        DynamicJsonDocument responseDoc(8192);  // Increased size for larger response
         DeserializationError error = deserializeJson(responseDoc, rawResponse);
 
         if (error) {

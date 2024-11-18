@@ -12,6 +12,7 @@ public:
     static bool saveQuote(const String& quote);
     static String loadLastQuote();
     static void listQuotes();
+    static String readFile(const String& path);  // Added for reading any file
 
 private:
     static String generateQuoteFilename();

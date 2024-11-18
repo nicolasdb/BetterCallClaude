@@ -1,4 +1,9 @@
 #include "TestManager.h"
+#include "feedback_display.h"
+
+// Declare external printer instance from main.cpp
+extern Printer printer;
+extern FeedbackDisplay display;
 
 void TestManager::runSPIFFSTest() {
     Serial.println("\n=== SPIFFS Manager Test ===");
@@ -87,6 +92,49 @@ void TestManager::runAPITest() {
     Serial.println("\n=== API Test Complete ===");
 }
 
+void TestManager::runPrinterTest() {
+    Serial.println("\n=== Printer Module Test ===");
+
+    // Check printer status
+    Serial.println("Checking printer status...");
+    if (printer.getStatus() != Printer::IDLE) {
+        handlePrinterError("Printer not ready");
+        Serial.println("Current printer status: " + printer.getStatusMessage());
+        return;
+    }
+    Serial.println("Printer is ready");
+
+    // Print test pattern
+    Serial.println("\nPrinting test pattern...");
+    String testPattern = "=================\n"
+                        "Printer Test\n"
+                        "=================\n"
+                        "Testing...\n"
+                        "1234567890\n"
+                        "ABCDEFGHIJK\n"
+                        "=================\n";
+                        
+    if (!printer.printQuote(testPattern)) {
+        handlePrinterError("Failed to print test pattern");
+        return;
+    }
+    
+    delay(1000);  // Wait for printing to complete
+    
+    // Print test quote
+    Serial.println("\nPrinting test quote...");
+    String testQuote = "This is a test quote\nfor the thermal printer.\n"
+                      "If you can read this,\nthe printer is working!";
+                      
+    if (!printer.printQuote(testQuote)) {
+        handlePrinterError("Failed to print test quote");
+        return;
+    }
+
+    Serial.println("Printer test completed successfully");
+    Serial.println("\n=== Printer Test Complete ===");
+}
+
 bool TestManager::initWiFi() {
     Serial.println("Initializing WiFi...");
     wifi_manager_init();
@@ -141,5 +189,10 @@ void TestManager::handleSPIFFSError(const char* message) {
 
 void TestManager::handleAPIError(const char* message) {
     Serial.print("API Error: ");
+    Serial.println(message);
+}
+
+void TestManager::handlePrinterError(const char* message) {
+    Serial.print("Printer Error: ");
     Serial.println(message);
 }

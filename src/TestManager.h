@@ -6,6 +6,7 @@
 #include "SPIFFSManager.h"
 #include "APIClient.h"
 #include "wifi_manager.h"
+#include "printer.h"
 
 enum SystemState {
     STATE_INIT,
@@ -22,10 +23,12 @@ public:
     static void runAPITest();
     static bool initWiFi();
     static void printState(SystemState state);
+    static void runPrinterTest();  // Added new printer test method
     
 private:
     static void handleSPIFFSError(const char* message);
     static void handleAPIError(const char* message);
+    static void handlePrinterError(const char* message);  // Added printer error handler
 };
 
 #endif // TEST_MANAGER_H
